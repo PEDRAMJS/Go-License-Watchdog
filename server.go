@@ -84,6 +84,8 @@ func (hs *heartbeatServer) handleInstance(w http.ResponseWriter, r *http.Request
 // Body: {"token":"<es256_jwt>"}
 //
 // License response:   {"status":"ok","valid_until":"RFC3339"}
+// Revoke response:    {"status":"revoked"} — current license invalidated; instance locked
+//                     immediately (402) until a new license token is submitted. Non-destructive.
 // Terminate response: {"status":"terminating"} — process exits after response is flushed
 // Failure response:   {"error":"unauthorized"} — always vague, never reveals which check failed
 func (hs *heartbeatServer) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -146,6 +148,17 @@ func (hs *heartbeatServer) handleToken(w http.ResponseWriter, r *http.Request) {
 			"status":      "ok",
 			"valid_until": claims.ValidUntil().Format(time.RFC3339),
 		})
+
+	case actionRevoke:
+		// Non-destructive lockdown: invalidate the current license so the middleware
+		// blocks (402) on the very next request. The process keeps running and nothing
+		// is deleted — submitting a fresh license token re-activates the instance.
+		hs.w.state.InvalidateLicense()
+		hs.w.logger.Printf("license revoked from %s (jti=%s) — instance locked until a new license is submitted",
+			r.RemoteAddr, claims.JTI)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "revoked"})
 
 	case actionTerminate:
 		hs.w.logger.Printf("terminate token accepted from %s — initiating self-destruct", r.RemoteAddr)

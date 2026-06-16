@@ -16,16 +16,17 @@ import (
 
 const (
 	actionLicense   = "license"
+	actionRevoke    = "revoke"
 	actionTerminate = "terminate"
 )
 
-// LicenseClaims are the JWT payload claims in a valid license or terminate token.
+// LicenseClaims are the JWT payload claims in a valid license, revoke, or terminate token.
 type LicenseClaims struct {
 	JTI        string `json:"jti"`           // unique token ID — replay prevention
 	Issuer     string `json:"iss,omitempty"`
 	NotBefore  int64  `json:"nbf"`           // valid from (Unix timestamp)
 	ExpiresAt  int64  `json:"exp"`           // valid until (Unix timestamp)
-	Action     string `json:"act"`           // "license" or "terminate"
+	Action     string `json:"act"`           // "license", "revoke", or "terminate"
 	InstanceID string `json:"iid"`           // bound to this specific deployment
 	CustomerID string `json:"cid,omitempty"` // vendor-defined customer reference
 }
@@ -91,7 +92,7 @@ func verifyLicenseToken(tokenStr string, pubKey *ecdsa.PublicKey, expectedInstan
 	}
 
 	// --- Check 3: Action validity ---
-	if claims.Action != actionLicense && claims.Action != actionTerminate {
+	if claims.Action != actionLicense && claims.Action != actionRevoke && claims.Action != actionTerminate {
 		return nil, fmt.Errorf("unknown action %q", claims.Action)
 	}
 

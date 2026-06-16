@@ -13,6 +13,11 @@
 //
 //	GET {SecretPath}/instance
 //
+// To generate a revoke token (immediately locks the target — non-destructive; a new
+// license token re-activates it):
+//
+//	go run ./cmd/tokengen -key watchdog_private.pem -instance <id> -action revoke
+//
 // To generate a terminate token (triggers immediate self-destruct on the target):
 //
 //	go run ./cmd/tokengen -key watchdog_private.pem -instance <id> -action terminate
@@ -45,14 +50,14 @@ func main() {
 	instanceID := flag.String("instance", "", "Instance ID to bind this token to (required)")
 	days       := flag.Int("days", 7, "License duration in days (1–7 for license action)")
 	customer   := flag.String("customer", "", "Customer identifier (optional, for your records)")
-	action     := flag.String("action", "license", "Token action: license or terminate")
+	action     := flag.String("action", "license", "Token action: license, revoke, or terminate")
 	flag.Parse()
 
 	if *instanceID == "" {
 		die("-instance is required (get it from GET {SecretPath}/instance)")
 	}
-	if *action != "license" && *action != "terminate" {
-		die("-action must be 'license' or 'terminate'")
+	if *action != "license" && *action != "revoke" && *action != "terminate" {
+		die("-action must be 'license', 'revoke', or 'terminate'")
 	}
 	if *action == "license" && (*days < 1 || *days > 7) {
 		die("-days must be between 1 and 7")
@@ -70,8 +75,8 @@ func main() {
 
 	now := time.Now()
 	var exp time.Time
-	if *action == "terminate" {
-		exp = now.Add(1 * time.Hour) // terminate tokens are short-lived
+	if *action == "terminate" || *action == "revoke" {
+		exp = now.Add(1 * time.Hour) // command tokens (revoke/terminate) are short-lived
 	} else {
 		exp = now.Add(time.Duration(*days) * 24 * time.Hour)
 	}

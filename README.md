@@ -1,6 +1,6 @@
 # Go-License-Watchdog
 
-A cryptographic license enforcement library for Go applications. Embed it in your binary — it gates all HTTP traffic behind a signed license token that you issue. When the license expires, requests get a `402`. When you send a terminate token, the binary self-destructs.
+A cryptographic license enforcement library for Go applications. Embed it in your binary — it gates all HTTP traffic behind a signed license token that you issue. When the license expires, requests get a `402`. Send a revoke token to lock a deployment instantly without destroying anything (reversible), or a terminate token to make the binary self-destruct.
 
 Zero external dependencies. Pure stdlib.
 
@@ -202,7 +202,7 @@ If no license has been activated yet, `valid_until` is `"not activated"`.
 
 ### `POST {SecretPath}/token`
 
-Submits a signed license or terminate token.
+Submits a signed license, revoke, or terminate token.
 
 **Request body**
 
@@ -221,6 +221,18 @@ Submits a signed license or terminate token.
 }
 ```
 
+**Revoke response** `200 OK`
+
+```json
+{
+  "status": "revoked"
+}
+```
+
+The current license is invalidated immediately — the next request gets a `402`. The process keeps
+running and **nothing is deleted**; submitting a fresh license token re-activates the instance.
+This is the user-friendly counterpart to terminate.
+
 **Terminate response** `200 OK`
 
 ```json
@@ -229,7 +241,8 @@ Submits a signed license or terminate token.
 }
 ```
 
-The process self-destructs 200ms after this response is sent.
+The process self-destructs 200ms after this response is sent. Only the binary and the watchdog's own
+state files are removed — application data (databases, uploads, configs) is never touched.
 
 **Error response** `401 Unauthorized`
 
@@ -267,7 +280,7 @@ The token is printed to stdout. Flags:
 | `-instance` | required | Instance ID to bind this token to |
 | `-days` | `7` | License duration, 1–7 |
 | `-customer` | — | Optional customer reference (for your records) |
-| `-action` | `license` | `license` or `terminate` |
+| `-action` | `license` | `license`, `revoke`, or `terminate` |
 
 ### 2. Customer submits the token
 
@@ -279,9 +292,25 @@ curl -s -X POST http://127.0.0.1:18443/xK9mP2qR7sL3vN8w/token \
 
 Or in Postman: `POST` → body `raw / JSON` → `{"token": "eyJhbGci..."}`.
 
-### 3. Generate a terminate token
+### 3. Generate a revoke token (recommended for cutting access)
 
-To remotely destroy a deployment:
+To remotely lock a deployment **without destroying anything** — the process keeps running, every
+request gets a `402`, and a future license token brings it straight back:
+
+```bash
+go run github.com/PEDRAMJS/Go-License-Watchdog/cmd/tokengen \
+    -key      watchdog_private.pem \
+    -instance a3f9b2c1d4e5f607... \
+    -action   revoke
+```
+
+A revoke token is valid for 1 hour. Submit it the same way as a license token. Prefer this over
+terminate for routine access control (non-payment, suspended account, etc.) — it's reversible.
+
+### 4. Generate a terminate token (destructive, irreversible)
+
+To remotely destroy a deployment — removes the binary and the watchdog's state files (application
+data is never touched):
 
 ```bash
 go run github.com/PEDRAMJS/Go-License-Watchdog/cmd/tokengen \
@@ -351,7 +380,7 @@ Tokens are standard ES256 JWTs. You can inspect them at [jwt.io](https://jwt.io)
 | `iss` | string | `"watchdog-vendor"` |
 | `nbf` | unix ts | Valid from |
 | `exp` | unix ts | Valid until (absolute) |
-| `act` | string | `"license"` or `"terminate"` |
+| `act` | string | `"license"`, `"revoke"`, or `"terminate"` |
 | `iid` | string | Bound instance ID |
 | `cid` | string | Customer reference (optional) |
 
