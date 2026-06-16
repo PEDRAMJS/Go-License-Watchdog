@@ -1,0 +1,5 @@
+watchdog_private.pem
+watchdog_hmac.txt
+*.pem
+mnt/
+files.zip
